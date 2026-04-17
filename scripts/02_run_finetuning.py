@@ -11,6 +11,8 @@ Usage (from lerobot root):
     pipenv run python project1_vla_data_efficiency/scripts/02_run_finetuning.py --fraction 0.25
     pipenv run python project1_vla_data_efficiency/scripts/02_run_finetuning.py --fraction 0.10
     pipenv run python project1_vla_data_efficiency/scripts/02_run_finetuning.py --fraction 0.05
+    pipenv run python project1_vla_data_efficiency/scripts/02_run_finetuning.py --fraction 0.25 --output-dir /tmp/smolvla-runs
+    pipenv run python project1_vla_data_efficiency/scripts/02_run_finetuning.py --fraction 0.25 --num-workers 8
 
 Each run trains for 30k steps and saves one checkpoint at the end.
 Expected GPU memory: ~20GB (SmolVLA 500M, batch 16, 512×512 images).
@@ -26,10 +28,10 @@ from pathlib import Path
 DATASET_REPO = "lerobot/libero_spatial_image"
 PRETRAINED_PATH = "lerobot/smolvla_base"
 
-TRAIN_STEPS = 20_000
+TRAIN_STEPS = 30_000
 BATCH_SIZE = 64
 SAVE_FREQ = 10_000   # save only final checkpoint (saves disk space)
-LOG_FREQ = 200
+LOG_FREQ = 100
 SEED = 42
 
 # W&B — set WANDB_API_KEY env var or disable
@@ -62,14 +64,19 @@ def load_episodes(fraction: float) -> list[int]:
     return episodes
 
 
-def build_config(fraction: float, episodes: list[int]):
+def build_config(
+    fraction: float,
+    episodes: list[int],
+    output_dir: Path,
+    num_workers: int,
+):
     """Build TrainPipelineConfig programmatically (no sys.argv manipulation needed)."""
     from lerobot.configs.default import DatasetConfig, WandBConfig
     from lerobot.configs.train import TrainPipelineConfig
     from lerobot.policies.smolvla.configuration_smolvla import SmolVLAConfig
 
     label = fraction_to_label(fraction)
-    output_dir = OUTPUT_BASE / label
+    output_dir = output_dir / label
 
     dataset_cfg = DatasetConfig(
         repo_id=DATASET_REPO,
@@ -103,7 +110,7 @@ def build_config(fraction: float, episodes: list[int]):
         save_freq=SAVE_FREQ,
         log_freq=LOG_FREQ,
         seed=SEED,
-        num_workers=8,
+        num_workers=num_workers,
         # No inline eval — we evaluate separately with 03_run_eval.sh
         eval_freq=0,
         wandb=wandb_cfg,
@@ -121,6 +128,19 @@ def main():
         "--dry-run", action="store_true",
         help="Print config and exit without training"
     )
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=OUTPUT_BASE,
+        help="Base output directory; final run path will be <output-dir>/<fraction-label>",
+    )
+    parser.add_argument(
+        "--num-workers",
+        type=int,
+        default=4,
+        help="Number of workers to use for training",
+    )
+
     args = parser.parse_args()
 
     valid = [1.0, 0.50, 0.25, 0.10, 0.05]
@@ -129,13 +149,18 @@ def main():
         sys.exit(1)
 
     episodes = load_episodes(args.fraction)
-    cfg = build_config(args.fraction, episodes)
+    cfg = build_config(
+        args.fraction,
+        episodes,
+        args.output_dir,
+        args.num_workers,
+    )
 
-    label = fraction_to_label(args.fraction)
     print(f"\n{'='*60}")
     print(f"  Fraction : {args.fraction:.0%}  ({len(episodes)} episodes)")
     print(f"  Steps    : {TRAIN_STEPS:,}")
     print(f"  Batch    : {BATCH_SIZE}")
+    print(f"  Workers  : {args.num_workers}")
     print(f"  Output   : {cfg.output_dir}")
     print(f"  W&B      : {'enabled' if cfg.wandb.enable else 'disabled'}")
     print(f"{'='*60}\n")
