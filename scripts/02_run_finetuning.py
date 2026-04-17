@@ -26,9 +26,9 @@ from pathlib import Path
 DATASET_REPO = "lerobot/libero_spatial_image"
 PRETRAINED_PATH = "lerobot/smolvla_base"
 
-TRAIN_STEPS = 30_000
-BATCH_SIZE = 16
-SAVE_FREQ = 30_000   # save only final checkpoint (saves disk space)
+TRAIN_STEPS = 20_000
+BATCH_SIZE = 64
+SAVE_FREQ = 10_000   # save only final checkpoint (saves disk space)
 LOG_FREQ = 200
 SEED = 42
 
@@ -38,7 +38,7 @@ WANDB_ENABLE = True  # set to False if you don't have W&B set up
 
 PROJECT_ROOT = Path(__file__).parent.parent
 SUBSETS_DIR = PROJECT_ROOT / "subsets"
-OUTPUT_BASE = Path("outputs/project1")
+OUTPUT_BASE = Path("outputs/finetuning-action-expert")
 # ─────────────────────────────────────────────────────────────────────────────
 
 
@@ -80,8 +80,8 @@ def build_config(fraction: float, episodes: list[int]):
         pretrained_path=Path(PRETRAINED_PATH),
         load_vlm_weights=True,   # load VLM backbone from smolvla_base
         freeze_vision_encoder=True,
-        train_expert_only=False,  # also train state projector
-        train_state_proj=True,
+        train_expert_only=True,  # also train state projector
+        train_state_proj=False,
         push_to_hub=False,  # local checkpoints only (PreTrainedConfig defaults push_to_hub=True)
     )
 
@@ -103,7 +103,7 @@ def build_config(fraction: float, episodes: list[int]):
         save_freq=SAVE_FREQ,
         log_freq=LOG_FREQ,
         seed=SEED,
-        num_workers=4,
+        num_workers=8,
         # No inline eval — we evaluate separately with 03_run_eval.sh
         eval_freq=0,
         wandb=wandb_cfg,

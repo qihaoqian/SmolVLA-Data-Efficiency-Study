@@ -35,5 +35,6 @@ run_one "1.00"
 run_one "0.50"
 run_one "0.25"
 run_one "0.10"
+run_one "0.05"
 
 echo "All serial jobs finished."
