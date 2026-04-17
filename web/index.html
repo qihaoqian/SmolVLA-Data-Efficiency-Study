@@ -1,0 +1,744 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VLA Data Efficiency Study on LIBERO</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<!-- ─── Hero ──────────────────────────────────────────────────────── -->
+<header class="hero">
+  <div class="container">
+    <div class="tag">Robot Learning · Vision-Language-Action · Data Efficiency</div>
+    <h1>VLA Data Efficiency<br/>Study on LIBERO</h1>
+    <p class="subtitle">
+      How many robot demonstrations does a Vision-Language-Action model actually need?
+      We fine-tune SmolVLA across 5 data regimes on LIBERO-Spatial (10 tasks, 432 demos)
+      and find a counterintuitive result: the zero-shot baseline outperforms
+      every fine-tuned condition.
+    </p>
+    <div class="hero-links">
+      <a class="btn btn-primary" href="https://github.com/QihaoQian" target="_blank">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0 1 12 6.844a9.59 9.59 0 0 1 2.504.337c1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.942.359.31.678.921.678 1.856 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.02 10.02 0 0 0 22 12.017C22 6.484 17.522 2 12 2z"/></svg>
+        Code
+      </a>
+      <a class="btn btn-secondary" href="#">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+        Report
+      </a>
+    </div>
+    <div class="hero-stats">
+      <div class="stat-item">
+        <div class="stat-value">10</div>
+        <div class="stat-label">Tasks</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value">6</div>
+        <div class="stat-label">Data Regimes</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value">500M</div>
+        <div class="stat-label">Model Params</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value">3,000</div>
+        <div class="stat-label">Eval Rollouts</div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- ─── Overview ─────────────────────────────────────────────────── -->
+<section class="section">
+  <div class="container narrow">
+    <h2 class="section-title">Overview</h2>
+    <p>
+      Vision-Language-Action (VLA) models like SmolVLA are pretrained on large internet-scale
+      corpora and can zero-shot execute manipulation tasks via language instructions. In practice,
+      teams fine-tune on task-specific demonstrations. A key open question is:
+      <strong>how many demonstrations does a VLA actually need?</strong>
+    </p>
+    <p style="margin-top:14px">
+      Collecting robot demos is expensive — if a VLA can achieve near-peak performance with 25% of
+      the data, practitioners can cut collection costs by 4×. This study systematically evaluates
+      SmolVLA fine-tuning across 5 data regimes on LIBERO-Spatial, comparing against a zero-shot
+      baseline evaluated on 500 rollouts (50 per task × 10 tasks).
+    </p>
+
+    <div class="rq-list">
+      <div class="rq-item"><span class="rq-num">Q1</span>What is the zero-shot baseline performance with no fine-tuning?</div>
+      <div class="rq-item"><span class="rq-num">Q2</span>How much does fine-tuning help on LIBERO-Spatial?</div>
+      <div class="rq-item"><span class="rq-num">Q3</span>What is the minimum demo count for &gt;70% average success?</div>
+      <div class="rq-item"><span class="rq-num">Q4</span>Is improvement uniform across tasks, or highly task-dependent?</div>
+      <div class="rq-item"><span class="rq-num">Q5</span>Does the model overfit at very low data regimes (≤ 5%)?</div>
+    </div>
+  </div>
+</section>
+
+<!-- ─── Scaling Curve ─────────────────────────────────────────────── -->
+<section class="section bg-subtle">
+  <div class="container">
+    <h2 class="section-title">Scaling Curve</h2>
+    <p class="section-sub">Average task success rate across all 10 LIBERO-Spatial tasks vs. number of demonstration episodes used for fine-tuning.</p>
+
+    <!-- Inline SVG Chart -->
+    <div class="chart-wrap">
+      <svg viewBox="0 0 800 320" xmlns="http://www.w3.org/2000/svg" aria-label="Scaling curve showing average success rate vs demo count">
+
+        <!-- Grid lines -->
+        <line x1="75" y1="49"  x2="760" y2="49"  stroke="#e5e8ed" stroke-width="1"/>
+        <line x1="75" y1="108" x2="760" y2="108" stroke="#e5e8ed" stroke-width="1"/>
+        <line x1="75" y1="167" x2="760" y2="167" stroke="#e5e8ed" stroke-width="1"/>
+        <line x1="75" y1="226" x2="760" y2="226" stroke="#e5e8ed" stroke-width="1"/>
+        <line x1="75" y1="285" x2="760" y2="285" stroke="#e5e8ed" stroke-width="1"/>
+
+        <!-- Y-axis labels -->
+        <text x="68" y="52"  text-anchor="end" class="chart-label">80%</text>
+        <text x="68" y="111" text-anchor="end" class="chart-label">70%</text>
+        <text x="68" y="170" text-anchor="end" class="chart-label">60%</text>
+        <text x="68" y="229" text-anchor="end" class="chart-label">50%</text>
+        <text x="68" y="288" text-anchor="end" class="chart-label">40%</text>
+
+        <!-- Y-axis title -->
+        <text x="14" y="167" text-anchor="middle" transform="rotate(-90,14,167)" class="chart-axis-title">Success Rate</text>
+
+        <!-- Axes -->
+        <line x1="75" y1="20"  x2="75"  y2="285" stroke="#d0d5dd" stroke-width="1.5"/>
+        <line x1="75" y1="285" x2="760" y2="285" stroke="#d0d5dd" stroke-width="1.5"/>
+
+        <!-- Zero-shot baseline dashed line -->
+        <line x1="75" y1="91" x2="760" y2="91" stroke="#f59e0b" stroke-width="1.8" stroke-dasharray="6,4" opacity="0.9"/>
+
+        <!-- Deficit zone fill (below baseline, between frac005 and frac100) -->
+        <polygon
+          points="212,91 760,91 760,107 623,114 486,125 349,180 212,212"
+          fill="#fee2e2" opacity="0.45"/>
+
+        <!-- Dashed connector: zero-shot → frac005 -->
+        <line x1="75" y1="91" x2="212" y2="212" stroke="#9ca3af" stroke-width="1.5" stroke-dasharray="5,4"/>
+
+        <!-- Fine-tuned curve (smooth bezier) -->
+        <path d="M 212,212 C 252,212 309,180 349,180 C 389,180 446,125 486,125 C 526,125 583,114 623,114 C 663,114 720,107 760,107"
+              fill="none" stroke="#2563eb" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+
+        <!-- Data point circles (fine-tuned) -->
+        <circle cx="212" cy="212" r="5" fill="#2563eb" stroke="#fff" stroke-width="2"/>
+        <circle cx="349" cy="180" r="5" fill="#2563eb" stroke="#fff" stroke-width="2"/>
+        <circle cx="486" cy="125" r="5" fill="#2563eb" stroke="#fff" stroke-width="2"/>
+        <circle cx="623" cy="114" r="5" fill="#2563eb" stroke="#fff" stroke-width="2"/>
+        <circle cx="760" cy="107" r="5" fill="#2563eb" stroke="#fff" stroke-width="2"/>
+
+        <!-- Zero-shot diamond marker -->
+        <polygon points="75,82 83,91 75,100 67,91" fill="#f59e0b" stroke="#fff" stroke-width="2"/>
+
+        <!-- Data value labels -->
+        <text x="75"  y="75"  text-anchor="middle" class="chart-value" fill="#92400e">73.0%</text>
+        <text x="212" y="229" text-anchor="middle" class="chart-value" fill="#2563eb">52.4%</text>
+        <text x="349" y="197" text-anchor="middle" class="chart-value" fill="#2563eb">57.9%</text>
+        <text x="486" y="112" text-anchor="middle" class="chart-value" fill="#2563eb">67.1%</text>
+        <text x="623" y="101" text-anchor="middle" class="chart-value" fill="#2563eb">69.0%</text>
+        <text x="760" y="94"  text-anchor="middle" class="chart-value" fill="#2563eb">70.2%</text>
+
+        <!-- Baseline annotation -->
+        <text x="766" y="88" class="chart-annotation" fill="#92400e">Zero-shot</text>
+        <text x="766" y="100" class="chart-annotation" fill="#92400e">baseline</text>
+
+        <!-- X-axis tick labels (top line: episodes, bottom line: fraction) -->
+        <text x="75"  y="300" text-anchor="middle" class="chart-label">0 eps</text>
+        <text x="75"  y="312" text-anchor="middle" class="chart-label chart-label-sub">Zero-shot</text>
+
+        <text x="212" y="300" text-anchor="middle" class="chart-label">21 eps</text>
+        <text x="212" y="312" text-anchor="middle" class="chart-label chart-label-sub">5%</text>
+
+        <text x="349" y="300" text-anchor="middle" class="chart-label">43 eps</text>
+        <text x="349" y="312" text-anchor="middle" class="chart-label chart-label-sub">10%</text>
+
+        <text x="486" y="300" text-anchor="middle" class="chart-label">108 eps</text>
+        <text x="486" y="312" text-anchor="middle" class="chart-label chart-label-sub">25%</text>
+
+        <text x="623" y="300" text-anchor="middle" class="chart-label">216 eps</text>
+        <text x="623" y="312" text-anchor="middle" class="chart-label chart-label-sub">50%</text>
+
+        <text x="760" y="300" text-anchor="middle" class="chart-label">432 eps</text>
+        <text x="760" y="312" text-anchor="middle" class="chart-label chart-label-sub">100%</text>
+
+        <!-- X-axis label -->
+        <text x="417" y="320" text-anchor="middle" class="chart-axis-title">Demonstration Episodes (Data Fraction)</text>
+
+        <!-- Legend -->
+        <polygon points="100,22 108,29 100,36 92,29" fill="#f59e0b" stroke="#fff" stroke-width="1.5"/>
+        <text x="113" y="33" class="chart-legend-text">Zero-shot baseline (73.0%)</text>
+
+        <circle cx="100" cy="52" r="4" fill="#2563eb" stroke="#fff" stroke-width="1.5"/>
+        <line x1="88" y1="52" x2="112" y2="52" stroke="#2563eb" stroke-width="2"/>
+        <text x="117" y="56" class="chart-legend-text">Fine-tuned SmolVLA</text>
+
+        <rect x="88" y="64" width="24" height="10" fill="#fee2e2" opacity="0.7"/>
+        <text x="117" y="73" class="chart-legend-text">Deficit vs. zero-shot</text>
+
+      </svg>
+    </div>
+
+    <!-- Highlight boxes -->
+    <div class="result-row">
+      <div class="result-card result-baseline">
+        <div class="result-card-label">Zero-shot Baseline</div>
+        <div class="result-card-value">73.0%</div>
+        <div class="result-card-note">SmolVLA with no fine-tuning<br/>500 rollouts · 10 tasks</div>
+      </div>
+      <div class="result-sep">→ fine-tuning →</div>
+      <div class="result-card result-worst">
+        <div class="result-card-label">Worst (5% data, 21 eps)</div>
+        <div class="result-card-value">52.4%</div>
+        <div class="result-card-note">↓ 20.6 pp below zero-shot<br/>Severe overfitting confirmed</div>
+      </div>
+      <div class="result-sep">…</div>
+      <div class="result-card result-best">
+        <div class="result-card-label">Best (100% data, 432 eps)</div>
+        <div class="result-card-value">70.2%</div>
+        <div class="result-card-note">↓ 2.8 pp still below zero-shot<br/>Fine-tuning never recovers</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─── Key Findings ──────────────────────────────────────────────── -->
+<section class="section">
+  <div class="container">
+    <h2 class="section-title">Key Findings</h2>
+    <p class="section-sub">Four main insights from the data efficiency study.</p>
+
+    <div class="findings-grid">
+
+      <div class="finding-card finding-red">
+        <div class="finding-icon">⚠️</div>
+        <div class="finding-num">Finding 1</div>
+        <h3>Fine-tuning Hurts at Low Data</h3>
+        <p>
+          Fine-tuning with only 5% of demos (~2 per task) drops average success from
+          <strong>73.0% → 52.4%</strong> — a 20.6 percentage-point regression.
+          Noisy gradients from 2 demonstrations cause severe task forgetting.
+        </p>
+        <div class="finding-stat">−20.6 pp at 5% data</div>
+      </div>
+
+      <div class="finding-card finding-orange">
+        <div class="finding-icon">📈</div>
+        <div class="finding-num">Finding 2</div>
+        <h3>Zero-shot Remains Unbeaten</h3>
+        <p>
+          Even with 100% of data (432 demos, ~43/task), fine-tuning achieves
+          only <strong>70.2%</strong> — still 2.8 pp below the zero-shot baseline.
+          SmolVLA's internet-scale pretraining gives it a strong prior on LIBERO-Spatial.
+        </p>
+        <div class="finding-stat">73.0% zero-shot &gt; 70.2% full fine-tune</div>
+      </div>
+
+      <div class="finding-card finding-yellow">
+        <div class="finding-icon">📊</div>
+        <div class="finding-num">Finding 3</div>
+        <h3>Recovery Curve After 10% Data</h3>
+        <p>
+          From 10% data onward, performance recovers steadily:
+          57.9% → 67.1% → 69.0% → 70.2%. Approximately
+          <strong>25% data (~11 demos/task)</strong> recovers to within 6 pp of zero-shot,
+          suggesting a potential data-efficiency knee.
+        </p>
+        <div class="finding-stat">25% data → 67.1% (−5.9 pp gap)</div>
+      </div>
+
+      <div class="finding-card finding-blue">
+        <div class="finding-icon">🔥</div>
+        <div class="finding-num">Finding 4</div>
+        <h3>Task 5 Persistently Fails</h3>
+        <p>
+          Task 5 ("on ramekin") is the hardest across all conditions:
+          36% zero-shot → crashes to <strong>2.6% at 10% data</strong>, recovering to
+          only 26.8% at full data. Spatial disambiguation may require
+          fundamentally more data or architectural changes.
+        </p>
+        <div class="finding-stat">Task 5: 2.6%–29% across all fine-tuned runs</div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ─── Per-Task Heatmap ──────────────────────────────────────────── -->
+<section class="section bg-subtle">
+  <div class="container">
+    <h2 class="section-title">Per-Task Breakdown</h2>
+    <p class="section-sub">
+      Success rate (%) for each of the 10 LIBERO-Spatial tasks across all 6 conditions.
+      Color indicates performance level.
+    </p>
+
+    <div class="heatmap-legend">
+      <span class="hm-swatch hm-red"></span><span class="hm-legend-label">&lt;25%</span>
+      <span class="hm-swatch hm-orange"></span><span class="hm-legend-label">25–50%</span>
+      <span class="hm-swatch hm-yellow"></span><span class="hm-legend-label">50–65%</span>
+      <span class="hm-swatch hm-lgreen"></span><span class="hm-legend-label">65–80%</span>
+      <span class="hm-swatch hm-green"></span><span class="hm-legend-label">≥80%</span>
+    </div>
+
+    <div class="table-wrap">
+      <table class="heatmap-table">
+        <thead>
+          <tr>
+            <th class="hm-condition-col">Condition</th>
+            <th>T0<div class="task-sub">btw plate &amp; ramekin</div></th>
+            <th>T1<div class="task-sub">next to ramekin</div></th>
+            <th>T2<div class="task-sub">table center</div></th>
+            <th>T3<div class="task-sub">on cookie box</div></th>
+            <th>T4<div class="task-sub">top drawer</div></th>
+            <th>T5<div class="task-sub">on ramekin ⚠️</div></th>
+            <th>T6<div class="task-sub">next to cookie box</div></th>
+            <th>T7<div class="task-sub">on stove</div></th>
+            <th>T8<div class="task-sub">next to plate</div></th>
+            <th>T9<div class="task-sub">wooden cabinet</div></th>
+            <th class="hm-avg-col">Avg</th>
+          </tr>
+        </thead>
+        <tbody>
+          <!-- Zero-shot -->
+          <tr>
+            <td class="condition-cell">
+              <span class="cond-badge cond-zero">Zero-shot</span>
+              <span class="cond-sub">0 demos</span>
+            </td>
+            <td class="hm-cell hm-yellow">62.0</td>
+            <td class="hm-cell hm-green">94.0</td>
+            <td class="hm-cell hm-lgreen">78.0</td>
+            <td class="hm-cell hm-lgreen">76.0</td>
+            <td class="hm-cell hm-lgreen">72.0</td>
+            <td class="hm-cell hm-orange">36.0</td>
+            <td class="hm-cell hm-green">84.0</td>
+            <td class="hm-cell hm-green">80.0</td>
+            <td class="hm-cell hm-lgreen">78.0</td>
+            <td class="hm-cell hm-lgreen">70.0</td>
+            <td class="hm-cell hm-lgreen hm-avg-cell">73.0</td>
+          </tr>
+          <!-- 5% -->
+          <tr>
+            <td class="condition-cell">
+              <span class="cond-badge cond-frac">5% data</span>
+              <span class="cond-sub">~2 demos/task</span>
+            </td>
+            <td class="hm-cell hm-green">86.4</td>
+            <td class="hm-cell hm-yellow">64.2</td>
+            <td class="hm-cell hm-green">80.6</td>
+            <td class="hm-cell hm-green">81.4</td>
+            <td class="hm-cell hm-orange">31.0</td>
+            <td class="hm-cell hm-red">7.2</td>
+            <td class="hm-cell hm-orange">26.8</td>
+            <td class="hm-cell hm-yellow">51.8</td>
+            <td class="hm-cell hm-green">82.8</td>
+            <td class="hm-cell hm-red">12.0</td>
+            <td class="hm-cell hm-yellow hm-avg-cell">52.4</td>
+          </tr>
+          <!-- 10% -->
+          <tr>
+            <td class="condition-cell">
+              <span class="cond-badge cond-frac">10% data</span>
+              <span class="cond-sub">~4 demos/task</span>
+            </td>
+            <td class="hm-cell hm-orange">49.2</td>
+            <td class="hm-cell hm-orange">45.6</td>
+            <td class="hm-cell hm-lgreen">76.6</td>
+            <td class="hm-cell hm-lgreen">77.0</td>
+            <td class="hm-cell hm-yellow">59.2</td>
+            <td class="hm-cell hm-red">2.6</td>
+            <td class="hm-cell hm-green">87.6</td>
+            <td class="hm-cell hm-lgreen">65.6</td>
+            <td class="hm-cell hm-lgreen">75.0</td>
+            <td class="hm-cell hm-orange">40.8</td>
+            <td class="hm-cell hm-yellow hm-avg-cell">57.9</td>
+          </tr>
+          <!-- 25% -->
+          <tr>
+            <td class="condition-cell">
+              <span class="cond-badge cond-frac">25% data</span>
+              <span class="cond-sub">~11 demos/task</span>
+            </td>
+            <td class="hm-cell hm-green">86.2</td>
+            <td class="hm-cell hm-lgreen">68.2</td>
+            <td class="hm-cell hm-green">85.0</td>
+            <td class="hm-cell hm-lgreen">76.2</td>
+            <td class="hm-cell hm-lgreen">65.0</td>
+            <td class="hm-cell hm-orange">29.0</td>
+            <td class="hm-cell hm-green">83.4</td>
+            <td class="hm-cell hm-yellow">61.8</td>
+            <td class="hm-cell hm-yellow">52.0</td>
+            <td class="hm-cell hm-yellow">64.4</td>
+            <td class="hm-cell hm-lgreen hm-avg-cell">67.1</td>
+          </tr>
+          <!-- 50% -->
+          <tr>
+            <td class="condition-cell">
+              <span class="cond-badge cond-frac">50% data</span>
+              <span class="cond-sub">~21 demos/task</span>
+            </td>
+            <td class="hm-cell hm-lgreen">78.2</td>
+            <td class="hm-cell hm-green">81.2</td>
+            <td class="hm-cell hm-green">88.8</td>
+            <td class="hm-cell hm-green">84.6</td>
+            <td class="hm-cell hm-lgreen">65.8</td>
+            <td class="hm-cell hm-red">17.0</td>
+            <td class="hm-cell hm-green">82.8</td>
+            <td class="hm-cell hm-lgreen">69.6</td>
+            <td class="hm-cell hm-yellow">62.4</td>
+            <td class="hm-cell hm-yellow">59.2</td>
+            <td class="hm-cell hm-lgreen hm-avg-cell">69.0</td>
+          </tr>
+          <!-- 100% -->
+          <tr>
+            <td class="condition-cell">
+              <span class="cond-badge cond-full">100% data</span>
+              <span class="cond-sub">~43 demos/task</span>
+            </td>
+            <td class="hm-cell hm-lgreen">79.8</td>
+            <td class="hm-cell hm-green">80.4</td>
+            <td class="hm-cell hm-green">84.0</td>
+            <td class="hm-cell hm-green">82.8</td>
+            <td class="hm-cell hm-yellow">52.2</td>
+            <td class="hm-cell hm-orange">26.8</td>
+            <td class="hm-cell hm-green">82.0</td>
+            <td class="hm-cell hm-lgreen">73.0</td>
+            <td class="hm-cell hm-lgreen">73.2</td>
+            <td class="hm-cell hm-lgreen">68.0</td>
+            <td class="hm-cell hm-lgreen hm-avg-cell">70.2</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="fusion-note" style="margin-top:20px">
+      <strong>Notable patterns:</strong>
+      Task 1 (next to ramekin) starts strong at zero-shot (94%) and remains near the top
+      across all conditions. Task 5 (on ramekin) is the outlier — it never exceeds 36% across any
+      condition, suggesting precise spatial disambiguation may require more demonstrations or
+      richer spatial representations than are available in this setup.
+      High per-task variance at low data (5%–10%) confirms noisy gradient updates when fewer
+      than 5 demos per task are available.
+    </div>
+  </div>
+</section>
+
+<!-- ─── Experimental Setup ────────────────────────────────────────── -->
+<section class="section">
+  <div class="container">
+    <h2 class="section-title">Experimental Setup</h2>
+    <p class="section-sub">Model architecture, dataset, and evaluation protocol.</p>
+
+    <div class="setup-grid">
+
+      <!-- Model Card -->
+      <div class="setup-card">
+        <div class="setup-header setup-header-blue">
+          <span class="setup-icon">🤖</span>
+          <div>
+            <div class="setup-title">SmolVLA (500M)</div>
+            <div class="setup-subtitle">lerobot/smolvla_base</div>
+          </div>
+        </div>
+        <div class="setup-body">
+          <div class="setup-row">
+            <span class="setup-key">Backbone</span>
+            <span class="setup-val">VLM backbone + Action Expert</span>
+          </div>
+          <div class="setup-row">
+            <span class="setup-key">Fine-tune</span>
+            <span class="setup-val">Expert + state projector (vision frozen)</span>
+          </div>
+          <div class="setup-row">
+            <span class="setup-key">Optimizer</span>
+            <span class="setup-val">AdamW, lr=1e-4, cosine → 2.5e-6</span>
+          </div>
+          <div class="setup-row">
+            <span class="setup-key">Steps</span>
+            <span class="setup-val">30,000 (batch_size = 16)</span>
+          </div>
+          <div class="setup-row">
+            <span class="setup-key">Action</span>
+            <span class="setup-val">chunk_size = 50 steps predicted at once</span>
+          </div>
+          <div class="setup-row">
+            <span class="setup-key">Seed</span>
+            <span class="setup-val">42, same hyperparameters across all conditions</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Dataset Card -->
+      <div class="setup-card">
+        <div class="setup-header setup-header-green">
+          <span class="setup-icon">🗄️</span>
+          <div>
+            <div class="setup-title">LIBERO-Spatial</div>
+            <div class="setup-subtitle">lerobot/libero_spatial_image</div>
+          </div>
+        </div>
+        <div class="setup-body">
+          <div class="setup-row">
+            <span class="setup-key">Tasks</span>
+            <span class="setup-val">10 spatial manipulation tasks</span>
+          </div>
+          <div class="setup-row">
+            <span class="setup-key">Episodes</span>
+            <span class="setup-val">432 total (~43 per task)</span>
+          </div>
+          <div class="setup-row">
+            <span class="setup-key">Observations</span>
+            <span class="setup-val">agentview RGB + wrist RGB + 8D proprio</span>
+          </div>
+          <div class="setup-row">
+            <span class="setup-key">Actions</span>
+            <span class="setup-val">7D (3D EEF pos Δ + 3D rot Δ + 1D gripper)</span>
+          </div>
+          <div class="setup-row">
+            <span class="setup-key">Eval</span>
+            <span class="setup-val">50 rollouts × 10 tasks = 500 per condition</span>
+          </div>
+          <div class="setup-row">
+            <span class="setup-key">Metric</span>
+            <span class="setup-val">success_rate (%) per task, average across tasks</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Experiment Pipeline -->
+    <div class="pipeline" style="margin-top:32px">
+      <div class="pipe-block sensor">LIBERO-Spatial<br/><small>432 episodes</small></div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-block controller">Stratified<br/><small>subset 5–100%</small></div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-block data">Fine-tune<br/><small>SmolVLA 30k steps</small></div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-block rl">Checkpoint<br/><small>30,000 final</small></div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-block output">Evaluate<br/><small>500 rollouts</small></div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-block robot">Results<br/><small>success_rate</small></div>
+    </div>
+  </div>
+</section>
+
+<!-- ─── Tasks ─────────────────────────────────────────────────────── -->
+<section class="section bg-subtle">
+  <div class="container">
+    <h2 class="section-title">LIBERO-Spatial Tasks</h2>
+    <p class="section-sub">
+      All 10 tasks share the same goal structure: pick up the <strong>black bowl</strong> from a
+      spatially-described location and place it on the plate. Difficulty varies by spatial context.
+    </p>
+
+    <div class="tasks-grid">
+      <div class="task-card">
+        <div class="task-id">T0</div>
+        <div class="task-body">
+          <div class="task-name">Between plate &amp; ramekin</div>
+          <div class="task-zs">Zero-shot: 62%</div>
+        </div>
+      </div>
+      <div class="task-card">
+        <div class="task-id task-easy">T1</div>
+        <div class="task-body">
+          <div class="task-name">Next to ramekin</div>
+          <div class="task-zs task-zs-good">Zero-shot: 94% ★</div>
+        </div>
+      </div>
+      <div class="task-card">
+        <div class="task-id">T2</div>
+        <div class="task-body">
+          <div class="task-name">Table center</div>
+          <div class="task-zs">Zero-shot: 78%</div>
+        </div>
+      </div>
+      <div class="task-card">
+        <div class="task-id">T3</div>
+        <div class="task-body">
+          <div class="task-name">On cookie box</div>
+          <div class="task-zs">Zero-shot: 76%</div>
+        </div>
+      </div>
+      <div class="task-card">
+        <div class="task-id">T4</div>
+        <div class="task-body">
+          <div class="task-name">Top drawer</div>
+          <div class="task-zs">Zero-shot: 72%</div>
+        </div>
+      </div>
+      <div class="task-card task-card-hard">
+        <div class="task-id task-hard">T5</div>
+        <div class="task-body">
+          <div class="task-name">On ramekin ⚠️</div>
+          <div class="task-zs task-zs-bad">Zero-shot: 36% — hardest</div>
+        </div>
+      </div>
+      <div class="task-card">
+        <div class="task-id task-easy">T6</div>
+        <div class="task-body">
+          <div class="task-name">Next to cookie box</div>
+          <div class="task-zs task-zs-good">Zero-shot: 84%</div>
+        </div>
+      </div>
+      <div class="task-card">
+        <div class="task-id">T7</div>
+        <div class="task-body">
+          <div class="task-name">On stove</div>
+          <div class="task-zs">Zero-shot: 80%</div>
+        </div>
+      </div>
+      <div class="task-card">
+        <div class="task-id">T8</div>
+        <div class="task-body">
+          <div class="task-name">Next to plate</div>
+          <div class="task-zs">Zero-shot: 78%</div>
+        </div>
+      </div>
+      <div class="task-card">
+        <div class="task-id">T9</div>
+        <div class="task-body">
+          <div class="task-name">On wooden cabinet</div>
+          <div class="task-zs">Zero-shot: 70%</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─── Data Fractions ────────────────────────────────────────────── -->
+<section class="section">
+  <div class="container narrow">
+    <h2 class="section-title">Data Regime Details</h2>
+    <p class="section-sub">
+      Subsampling is <strong>stratified per task</strong> — each fraction takes equal proportions from
+      every task to avoid class imbalance. All conditions use identical hyperparameters.
+    </p>
+
+    <div class="phase-list">
+
+      <div class="phase-item">
+        <div class="phase-badge phase-zero">Zero-shot</div>
+        <div class="phase-body">
+          <div class="phase-title">No Fine-tuning &nbsp;<span class="phase-range">0 episodes · 0 demos/task</span></div>
+          <p class="phase-desc">SmolVLA base model evaluated directly on LIBERO-Spatial. Establishes the pretraining prior baseline. The model leverages internet-scale VLM knowledge to understand spatial language instructions.</p>
+          <div class="formula">avg_success = 73.0% &nbsp;·&nbsp; range [36% – 94%] across tasks</div>
+        </div>
+      </div>
+
+      <div class="phase-item">
+        <div class="phase-badge phase-1">5% Data</div>
+        <div class="phase-body">
+          <div class="phase-title">Minimal Data Regime &nbsp;<span class="phase-range">~21 episodes · ~2 demos/task</span></div>
+          <p class="phase-desc">With only 2 demonstrations per task, gradient updates are highly noisy. The model experiences catastrophic forgetting on several tasks while overfitting on others. Worst-case degradation to 7.2% on Task 5.</p>
+          <div class="formula">avg_success = 52.4% &nbsp;·&nbsp; Δ = −20.6 pp vs zero-shot</div>
+        </div>
+      </div>
+
+      <div class="phase-item">
+        <div class="phase-badge phase-2">10% Data</div>
+        <div class="phase-body">
+          <div class="phase-title">Low Data Regime &nbsp;<span class="phase-range">~43 episodes · ~4 demos/task</span></div>
+          <p class="phase-desc">Recovery begins but remains below zero-shot. Task 5 crashes to 2.6% (worst across all conditions). Task 6 surprisingly reaches 87.6%, demonstrating high per-task variance at this regime.</p>
+          <div class="formula">avg_success = 57.9% &nbsp;·&nbsp; Δ = −15.1 pp vs zero-shot</div>
+        </div>
+      </div>
+
+      <div class="phase-item">
+        <div class="phase-badge phase-3">25%–100% Data</div>
+        <div class="phase-body">
+          <div class="phase-title">Moderate to Full Data &nbsp;<span class="phase-range">108–432 episodes · 11–43 demos/task</span></div>
+          <p class="phase-desc">From 25% data onward, average performance approaches but never reaches zero-shot. The curve flattens rapidly: 25% → 67.1%, 50% → 69.0%, 100% → 70.2%. Diminishing returns are visible — doubling from 50% to 100% yields only +1.2 pp.</p>
+          <div class="formula">frac25→frac50→frac100: 67.1% → 69.0% → 70.2%</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ─── Hyperparameters ───────────────────────────────────────────── -->
+<section class="section bg-subtle">
+  <div class="container narrow">
+    <h2 class="section-title">Training Configuration</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Parameter</th><th>Value</th><th>Notes</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>model</code></td><td>lerobot/smolvla_base</td><td>500M params, VLM + action expert</td></tr>
+          <tr><td><code>steps</code></td><td>30,000</td><td>Same across all data fractions</td></tr>
+          <tr><td><code>batch_size</code></td><td>16</td><td>—</td></tr>
+          <tr><td><code>learning_rate</code></td><td>1e-4</td><td>AdamW, cosine decay</td></tr>
+          <tr><td><code>lr_min</code></td><td>2.5e-6</td><td>Cosine decay floor</td></tr>
+          <tr><td><code>chunk_size</code></td><td>50</td><td>Action steps predicted per forward pass</td></tr>
+          <tr><td><code>frozen</code></td><td>vision encoder</td><td>Expert + state projector trained</td></tr>
+          <tr><td><code>seed</code></td><td>42</td><td>Reproducibility</td></tr>
+          <tr><td><code>eval_rollouts</code></td><td>500</td><td>50 eps × 10 tasks per condition</td></tr>
+          <tr><td><code>save_freq</code></td><td>30,000</td><td>Final checkpoint only</td></tr>
+          <tr><td><code>subsampling</code></td><td>stratified</td><td>Equal proportion per task</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ─── Tech Stack ────────────────────────────────────────────────── -->
+<section class="section">
+  <div class="container narrow">
+    <h2 class="section-title">Tech Stack</h2>
+    <div class="tech-grid">
+      <div class="tech-item">
+        <div class="tech-name">LeRobot</div>
+        <div class="tech-role">Training + evaluation framework</div>
+      </div>
+      <div class="tech-item">
+        <div class="tech-name">SmolVLA</div>
+        <div class="tech-role">500M VLA base model</div>
+      </div>
+      <div class="tech-item">
+        <div class="tech-name">LIBERO</div>
+        <div class="tech-role">Benchmark suite (Spatial split)</div>
+      </div>
+      <div class="tech-item">
+        <div class="tech-name">MuJoCo</div>
+        <div class="tech-role">Physics simulation</div>
+      </div>
+      <div class="tech-item">
+        <div class="tech-name">PyTorch</div>
+        <div class="tech-role">Deep learning framework</div>
+      </div>
+      <div class="tech-item">
+        <div class="tech-name">HuggingFace</div>
+        <div class="tech-role">Model hub, dataset loading</div>
+      </div>
+      <div class="tech-item">
+        <div class="tech-name">Hydra</div>
+        <div class="tech-role">Config management</div>
+      </div>
+      <div class="tech-item">
+        <div class="tech-name">matplotlib</div>
+        <div class="tech-role">Results visualization</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─── Footer ────────────────────────────────────────────────────── -->
+<footer class="footer">
+  <div class="container">
+    <p>VLA Data Efficiency Study &nbsp;·&nbsp; SmolVLA on LIBERO-Spatial</p>
+    <p class="footer-note">All experiments run in MuJoCo simulation. Qihao Qian · 2026</p>
+  </div>
+</footer>
+
+</body>
+</html>
