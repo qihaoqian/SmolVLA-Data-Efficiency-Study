@@ -99,7 +99,7 @@ eval_checkpoint() {
     echo ""
     echo "[$LABEL] Evaluating checkpoint: $CKPT_PATH"
 
-    MUJOCO_GL=egl pipenv run python -m lerobot.scripts.lerobot_eval \
+    MUJOCO_GL=egl python3 -m lerobot.scripts.lerobot_eval \
         --policy.type=smolvla \
         --policy.pretrained_path="$CKPT_PATH" \
         --env.type=libero \
@@ -126,4 +126,4 @@ done
 
 echo ""
 echo "All evaluations complete."
-echo "Run analysis: pipenv run python project1_vla_data_efficiency/scripts/04_analyze_results.py"
+echo "Run analysis: python3 project1_vla_data_efficiency/scripts/04_analyze_results.py"
