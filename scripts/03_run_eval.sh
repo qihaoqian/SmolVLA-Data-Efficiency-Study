@@ -105,7 +105,7 @@ eval_checkpoint() {
         --env.type=libero \
         --env.task=libero_spatial \
         --eval.n_episodes=500 \
-        --eval.batch_size=2 \
+        --eval.batch_size=4 \
         --output_dir="$OUT_DIR"
 
     echo "[$LABEL] Done. Results at $OUT_DIR/eval_info.json"
