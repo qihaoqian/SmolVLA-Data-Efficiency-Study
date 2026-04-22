@@ -6,6 +6,11 @@
 #   bash project1_vla_data_efficiency/scripts/03_run_eval.sh 0.50
 #   bash project1_vla_data_efficiency/scripts/03_run_eval.sh 0.10 0.50
 #   bash project1_vla_data_efficiency/scripts/03_run_eval.sh --finetune-output-base-dir /tmp/ft --results-dir /tmp/eval 0.25
+#   CKPT_PATH=/path/to/pretrained_model bash .../03_run_eval.sh
+#   bash .../03_run_eval.sh --ckpt-path /path/to/pretrained_model
+#
+# If CKPT_PATH is not set (no env, no --ckpt-path), checkpoints are taken from
+# FINETUNE_OUTPUT_BASE_DIR/<frac>/checkpoints/last/pretrained_model (non-interactive).
 #
 # Output: project1_vla_data_efficiency/results/<fraction>/eval_info.json
 #
@@ -18,9 +23,18 @@ PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 FINETUNE_OUTPUT_BASE_DIR="${PROJECT_ROOT}/outputs/finetuning-action-expert"
 RESULTS_DIR="${PROJECT_ROOT}/results"
 TARGET_FRACTIONS=()
+CKPT_PATH_OVERRIDE=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
+        --ckpt-path)
+            if [[ $# -lt 2 ]]; then
+                echo "ERROR: --ckpt-path requires a value" >&2
+                exit 1
+            fi
+            CKPT_PATH_OVERRIDE="$2"
+            shift 2
+            ;;
         --finetune-output-base-dir)
             if [[ $# -lt 2 ]]; then
                 echo "ERROR: --finetune-output-base-dir requires a value" >&2
@@ -39,11 +53,12 @@ while [[ $# -gt 0 ]]; do
             ;;
         -h|--help)
             cat <<EOF
-Usage: $(basename "$0") [--finetune-output-base-dir DIR] [--results-dir DIR] [FRACTION ...]
+Usage: $(basename "$0") [--ckpt-path DIR] [--finetune-output-base-dir DIR] [--results-dir DIR] [FRACTION ...]
 
 Examples:
   $(basename "$0")
   $(basename "$0") 0.25
+  $(basename "$0") --ckpt-path /path/to/pretrained_model
   $(basename "$0") --finetune-output-base-dir /tmp/ft --results-dir /tmp/eval 0.10 0.25
 EOF
             exit 0
@@ -54,6 +69,10 @@ EOF
             ;;
     esac
 done
+
+if [[ -z "$CKPT_PATH_OVERRIDE" ]]; then
+    CKPT_PATH_OVERRIDE="${CKPT_PATH:-}"
+fi
 
 mkdir -p "$RESULTS_DIR"
 
@@ -83,6 +102,27 @@ fraction_to_label() {
     esac
 }
 
+run_lerobot_eval() {
+    local CKPT_PATH="$1"
+    local OUT_DIR="$2"
+    local LOG_TAG="$3"
+
+    mkdir -p "$OUT_DIR"
+    echo ""
+    echo "[$LOG_TAG] Evaluating checkpoint: $CKPT_PATH"
+
+    MUJOCO_GL=egl python3 -m lerobot.scripts.lerobot_eval \
+        --policy.type=smolvla \
+        --policy.pretrained_path="$CKPT_PATH" \
+        --env.type=libero \
+        --env.task=libero_spatial \
+        --eval.n_episodes=300 \
+        --eval.batch_size=16 \
+        --output_dir="$OUT_DIR"
+
+    echo "[$LOG_TAG] Done. Results at $OUT_DIR/eval_info.json"
+}
+
 eval_checkpoint() {
     local fraction="$1"
     local LABEL
@@ -95,34 +135,42 @@ eval_checkpoint() {
         return
     fi
 
-    mkdir -p "$OUT_DIR"
-    echo ""
-    echo "[$LABEL] Evaluating checkpoint: $CKPT_PATH"
+    run_lerobot_eval "$CKPT_PATH" "$OUT_DIR" "$LABEL"
+}
 
-    MUJOCO_GL=egl python3 -m lerobot.scripts.lerobot_eval \
-        --policy.type=smolvla \
-        --policy.pretrained_path="$CKPT_PATH" \
-        --env.type=libero \
-        --env.task=libero_spatial \
-        --eval.n_episodes=500 \
-        --eval.batch_size=4 \
-        --output_dir="$OUT_DIR"
+eval_checkpoint_explicit() {
+    local CKPT_PATH="$1"
+    local OUT_DIR="$RESULTS_DIR/explicit_ckpt"
 
-    echo "[$LABEL] Done. Results at $OUT_DIR/eval_info.json"
+    if [ ! -d "$CKPT_PATH" ]; then
+        echo "ERROR: checkpoint not found at $CKPT_PATH" >&2
+        exit 1
+    fi
+
+    run_lerobot_eval "$CKPT_PATH" "$OUT_DIR" "explicit_ckpt"
 }
 
 # ── 1. Evaluate target fractions (from args or defaults) ─────────────────────
 DEFAULT_FRACTIONS=("0.05" "0.10" "0.25" "0.50" "1.00")
-if [[ ${#TARGET_FRACTIONS[@]} -eq 0 ]]; then
+if [[ -z "$CKPT_PATH_OVERRIDE" ]] && [[ ${#TARGET_FRACTIONS[@]} -eq 0 ]]; then
     TARGET_FRACTIONS=("${DEFAULT_FRACTIONS[@]}")
 fi
 
-echo "Target fractions: ${TARGET_FRACTIONS[*]}"
-echo "Checkpoint base dir: ${FINETUNE_OUTPUT_BASE_DIR}"
-echo "Results dir: ${RESULTS_DIR}"
-for fraction in "${TARGET_FRACTIONS[@]}"; do
-    eval_checkpoint "$fraction"
-done
+if [[ -n "$CKPT_PATH_OVERRIDE" ]]; then
+    if [[ ${#TARGET_FRACTIONS[@]} -gt 0 ]]; then
+        echo "NOTE: explicit checkpoint set (--ckpt-path or CKPT_PATH); ignoring fraction arguments." >&2
+    fi
+    echo "Explicit checkpoint: ${CKPT_PATH_OVERRIDE}"
+    echo "Results dir: ${RESULTS_DIR}"
+    eval_checkpoint_explicit "$CKPT_PATH_OVERRIDE"
+else
+    echo "Target fractions: ${TARGET_FRACTIONS[*]}"
+    echo "Checkpoint base dir: ${FINETUNE_OUTPUT_BASE_DIR}"
+    echo "Results dir: ${RESULTS_DIR}"
+    for fraction in "${TARGET_FRACTIONS[@]}"; do
+        eval_checkpoint "$fraction"
+    done
+fi
 
 echo ""
 echo "All evaluations complete."
