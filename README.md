@@ -100,11 +100,11 @@ every task to avoid task imbalance.
 
 ### Evaluation Protocol
 
-与 `scripts/03_run_eval.sh` 中调用 `lerobot_eval` 的设置一致：
+与 `scripts/03_run_eval.sh` 中传给 `lerobot_eval` 的评估超参一致（可通过该脚本的命令行覆盖，见 Step 3）：
 
-- **50 episodes per task × 10 tasks = 500 total rollouts** 每次评估
+- **`--eval.n_episodes`**：脚本默认 **200**，对应选项 `--eval-n-episodes`（LeRobot 对该字段的语义以官方文档为准，例如是否按 task 计）
+- **`--eval.batch_size`**：脚本默认 **4**，对应选项 `--eval-batch-size`（并行环境规模）
 - Metric: `success_rate` (%) = 成功回合占比
-- `**--eval.batch_size=2`**（脚本内写死；并行环境规模由此决定，并非 10）
 - 任务：`libero_spatial`，环境类型：`libero`
 
 ---
@@ -240,10 +240,12 @@ bash scripts/03_run_eval.sh [选项] [FRACTION ...]
 | ---------------------------- | ------------------------------------------- | --------------------------------------------------------------------------------- |
 | `--finetune-output-base-dir` | `<仓库根>/outputs/finetuning-action-expert`    | 与 Step 2 的 `--output-dir` 对齐；脚本会在其下查找 `fracXXX/checkpoints/last/pretrained_model` |
 | `--results-dir`              | `<仓库根>/results`                             | 每条评估的 `eval_info.json` 等输出目录                                                      |
+| `--eval-n-episodes`         | `200`                                         | 传给 `lerobot_eval` 的 `--eval.n_episodes`                                                 |
+| `--eval-batch-size`         | `4`                                           | 传给 `lerobot_eval` 的 `--eval.batch_size`                                                 |
 | 位置参数 `FRACTION ...`          | **未指定时**：`0.05`、`0.10`、`0.25`、`0.50`、`1.00` | 可写小数或与脚本内别名，如 `0.50`、`frac050`、`1`；**不支持**未列在脚本 `fraction_to_label` 中的比例          |
 
 
-**评估时固定传入 `lerobot_eval` 的选项**（写在 shell 内）：`--policy.type=smolvla`、`--env.type=libero`、`--env.task=libero_spatial`、`--eval.n_episodes=500`、`--eval.batch_size=2`；需 headless 渲染时脚本使用 `MUJOCO_GL=egl`。
+**评估时固定传入 `lerobot_eval` 的选项**（写在 shell 内）：`--policy.type=smolvla`、`--env.type=libero`、`--env.task=libero_spatial`；**`--eval.n_episodes` / `--eval.batch_size` 默认 200 / 4**，可用 `--eval-n-episodes`、`--eval-batch-size` 覆盖。需 headless 渲染时脚本使用 `MUJOCO_GL=egl`。
 
 **精简镜像 / 容器（Debian/Ubuntu）**：若出现 `libGL.so.1`、`libEGL.so.0`、`libOpenGL.so.0` 缺失或 PyOpenGL EGL 相关报错，在容器内安装 Mesa/EGL 与 GLVND 用户态库后再跑评估：
 
@@ -263,14 +265,17 @@ apt-get install -y libegl1 libopengl0 libglvnd0 libgl1 libglib2.0-0
 # 默认评估全部五个比例
 bash scripts/03_run_eval.sh
 
-# 只评估 50% 与 100%
-bash scripts/03_run_eval.sh 0.50 1.00
+# 只评估 100%
+bash scripts/03_run_eval.sh 1.00
 
 # 指定微调输出与结果目录
 bash scripts/03_run_eval.sh --finetune-output-base-dir /tmp/ft --results-dir /tmp/eval 0.25
+
+# 自定义评估回合数与 batch（例如更接近「每 task 50 × 10 task」的总 rollout 规模时，可按 LeRobot 语义自行设大 n_episodes）
+bash scripts/03_run_eval.sh --eval-n-episodes 500 --eval-batch-size 2
 ```
 
-单次评估约 **20–40 分钟**（500 episodes）。输出：`results/fracXXX/eval_info.json`（以及各 run 的 `output_dir` 下日志）。
+单次评估耗时随 **`--eval-n-episodes`**、**`--eval-batch-size`** 与机器性能变化（默认 200 / 4 时以往约 **20–40 分钟** 量级，仅供参考）。输出：`results/fracXXX/eval_info.json`（以及各 run 的 `output_dir` 下日志）。
 
 ### Step 4: Analyze and visualize
 

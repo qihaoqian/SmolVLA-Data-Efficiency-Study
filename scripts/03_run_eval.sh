@@ -6,6 +6,7 @@
 #   bash project1_vla_data_efficiency/scripts/03_run_eval.sh 0.50
 #   bash project1_vla_data_efficiency/scripts/03_run_eval.sh 0.10 0.50
 #   bash project1_vla_data_efficiency/scripts/03_run_eval.sh --finetune-output-base-dir /tmp/ft --results-dir /tmp/eval 0.25
+#   bash .../03_run_eval.sh --eval-n-episodes 500 --eval-batch-size 2
 #   CKPT_PATH=/path/to/pretrained_model bash .../03_run_eval.sh
 #   bash .../03_run_eval.sh --ckpt-path /path/to/pretrained_model
 #
@@ -14,7 +15,7 @@
 #
 # Output: project1_vla_data_efficiency/results/<fraction>/eval_info.json
 #
-# Each eval run takes ~20–40 min (500 episodes, 10 parallel envs).
+# Each eval run duration depends on --eval-n-episodes and --eval-batch-size (defaults: 200, 4).
 
 set -euo pipefail
 
@@ -24,9 +25,35 @@ FINETUNE_OUTPUT_BASE_DIR="${PROJECT_ROOT}/outputs/finetuning-action-expert"
 RESULTS_DIR="${PROJECT_ROOT}/results"
 TARGET_FRACTIONS=()
 CKPT_PATH_OVERRIDE=""
+EVAL_N_EPISODES=200
+EVAL_BATCH_SIZE=4
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
+        --eval-n-episodes)
+            if [[ $# -lt 2 ]]; then
+                echo "ERROR: --eval-n-episodes requires a value" >&2
+                exit 1
+            fi
+            if ! [[ "$2" =~ ^[0-9]+$ ]] || [[ "$2" -lt 1 ]]; then
+                echo "ERROR: --eval-n-episodes must be a positive integer" >&2
+                exit 1
+            fi
+            EVAL_N_EPISODES="$2"
+            shift 2
+            ;;
+        --eval-batch-size)
+            if [[ $# -lt 2 ]]; then
+                echo "ERROR: --eval-batch-size requires a value" >&2
+                exit 1
+            fi
+            if ! [[ "$2" =~ ^[0-9]+$ ]] || [[ "$2" -lt 1 ]]; then
+                echo "ERROR: --eval-batch-size must be a positive integer" >&2
+                exit 1
+            fi
+            EVAL_BATCH_SIZE="$2"
+            shift 2
+            ;;
         --ckpt-path)
             if [[ $# -lt 2 ]]; then
                 echo "ERROR: --ckpt-path requires a value" >&2
@@ -53,13 +80,21 @@ while [[ $# -gt 0 ]]; do
             ;;
         -h|--help)
             cat <<EOF
-Usage: $(basename "$0") [--ckpt-path DIR] [--finetune-output-base-dir DIR] [--results-dir DIR] [FRACTION ...]
+Usage: $(basename "$0") [OPTIONS] [FRACTION ...]
+
+Options:
+  --ckpt-path DIR                 Use this checkpoint instead of per-fraction paths
+  --finetune-output-base-dir DIR  Base dir for fracXXX/checkpoints/... (default: repo outputs)
+  --results-dir DIR               Where to write eval outputs (default: repo results)
+  --eval-n-episodes N            Passed as --eval.n_episodes (default: 200)
+  --eval-batch-size N            Passed as --eval.batch_size (default: 4)
 
 Examples:
   $(basename "$0")
   $(basename "$0") 0.25
   $(basename "$0") --ckpt-path /path/to/pretrained_model
   $(basename "$0") --finetune-output-base-dir /tmp/ft --results-dir /tmp/eval 0.10 0.25
+  $(basename "$0") --eval-n-episodes 500 --eval-batch-size 2
 EOF
             exit 0
             ;;
@@ -116,8 +151,8 @@ run_lerobot_eval() {
         --policy.pretrained_path="$CKPT_PATH" \
         --env.type=libero \
         --env.task=libero_spatial \
-        --eval.n_episodes=200 \
-        --eval.batch_size=4 \
+        --eval.n_episodes="$EVAL_N_EPISODES" \
+        --eval.batch_size="$EVAL_BATCH_SIZE" \
         --output_dir="$OUT_DIR"
 
     echo "[$LOG_TAG] Done. Results at $OUT_DIR/eval_info.json"
