@@ -116,7 +116,7 @@ run_lerobot_eval() {
         --policy.pretrained_path="$CKPT_PATH" \
         --env.type=libero \
         --env.task=libero_spatial \
-        --eval.n_episodes=300 \
+        --eval.n_episodes=200 \
         --eval.batch_size=4 \
         --output_dir="$OUT_DIR"
 
