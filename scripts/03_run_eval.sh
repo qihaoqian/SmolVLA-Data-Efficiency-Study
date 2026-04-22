@@ -117,7 +117,7 @@ run_lerobot_eval() {
         --env.type=libero \
         --env.task=libero_spatial \
         --eval.n_episodes=300 \
-        --eval.batch_size=16 \
+        --eval.batch_size=8 \
         --output_dir="$OUT_DIR"
 
     echo "[$LOG_TAG] Done. Results at $OUT_DIR/eval_info.json"

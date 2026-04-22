@@ -249,9 +249,9 @@ bash scripts/03_run_eval.sh [选项] [FRACTION ...]
 
 ```bash
 apt-get update
-apt install cmake
+apt install -y cmake
 export PATH="/usr/bin:$PATH"
-pip install libero
+pip install --no-input libero
 apt-get install -y libegl1 libopengl0 libglvnd0 libgl1 libglib2.0-0
 ```
 
