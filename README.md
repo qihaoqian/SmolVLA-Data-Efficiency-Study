@@ -80,20 +80,20 @@ every task to avoid task imbalance.
 
 ### Training Hyperparameters (same for all conditions)
 
-以下为 `scripts/02_run_finetuning.py` 中的固定常量（不可通过 CLI 修改；改训练需在脚本内编辑）：
+以下为 `scripts/02_run_finetuning.py` 中的训练超参。`steps` 可通过 `--train-steps` 覆盖，其余固定常量需在脚本内编辑：
 
 
-| 项            | 值                                                                  |
-| ------------ | ------------------------------------------------------------------ |
-| `steps`      | 30,000                                                             |
-| `batch_size` | 64                                                                 |
-| `eval_freq`  | 0（训练中不做在线评估，评估见 Step 3）                                            |
-| `save_freq`  | 10,000（配合步数，实际主要保留最终 checkpoint）                                   |
-| `log_freq`   | 100                                                                |
-| `seed`       | 42                                                                 |
-| 数据集          | `lerobot/libero_spatial_image`（子集由 `subsets/frac*.json` 指定）        |
-| 预训练权重        | `lerobot/smolvla_base`                                             |
-| WB 项目名       | `vla_data_efficiency_libero_spatial`（需设置 `WANDB_API_KEY`；未设置则自动关闭） |
+| 项            | 默认值                                                                | 可通过 CLI 覆盖 |
+| ------------ | ------------------------------------------------------------------ | ----------- |
+| `steps`      | 30,000                                                             | ✅ `--train-steps` |
+| `batch_size` | 64                                                                 | ❌           |
+| `eval_freq`  | 0（训练中不做在线评估，评估见 Step 3）                                            | ❌           |
+| `save_freq`  | 10,000（配合步数，实际主要保留最终 checkpoint）                                   | ❌           |
+| `log_freq`   | 100                                                                | ❌           |
+| `seed`       | 42                                                                 | ❌           |
+| 数据集          | `lerobot/libero_spatial_image`（子集由 `subsets/frac*.json` 指定）        | ❌           |
+| 预训练权重        | `lerobot/smolvla_base`                                             | ❌           |
+| WB 项目名       | `vla_data_efficiency_libero_spatial`（需设置 `WANDB_API_KEY`；未设置则自动关闭） | ❌           |
 
 
 策略侧（`SmolVLAConfig`）：`freeze_vision_encoder=True`，`train_expert_only=True`，`train_state_proj=False`，`load_vlm_weights=True`，`push_to_hub=False`。
@@ -102,8 +102,8 @@ every task to avoid task imbalance.
 
 与 `scripts/03_run_eval.sh` 中传给 `lerobot_eval` 的评估超参一致（可通过该脚本的命令行覆盖，见 Step 3）：
 
-- **`--eval.n_episodes`**：脚本默认 **200**，对应选项 `--eval-n-episodes`（LeRobot 对该字段的语义以官方文档为准，例如是否按 task 计）
-- **`--eval.batch_size`**：脚本默认 **4**，对应选项 `--eval-batch-size`（并行环境规模）
+- `**--eval.n_episodes`**：脚本默认 **200**，对应选项 `--eval-n-episodes`（LeRobot 对该字段的语义以官方文档为准，例如是否按 task 计）
+- `**--eval.batch_size`**：脚本默认 **4**，对应选项 `--eval-batch-size`（并行环境规模）
 - Metric: `success_rate` (%) = 成功回合占比
 - 任务：`libero_spatial`，环境类型：`libero`
 
@@ -202,6 +202,7 @@ pipenv run python scripts/02_run_finetuning.py --fraction <FRAC> [选项]
 | --------------- | ---------------------------------- | ------------------------------------- |
 | `--output-dir`  | `outputs/finetuning-action-expert` | 训练根目录；实际写入路径为 `<output-dir>/fracXXX/` |
 | `--num-workers` | `4`                                | DataLoader worker 数                   |
+| `--train-steps` | `30000`                            | 训练步数；可覆盖脚本内 `TRAIN_STEPS` 常量          |
 | `--dry-run`     | 关闭                                 | 仅打印配置并退出，不启动训练                        |
 
 
@@ -218,6 +219,8 @@ pipenv run python scripts/02_run_finetuning.py --fraction 0.05
 ```
 
 自定义输出目录示例：`pipenv run python scripts/02_run_finetuning.py --fraction 0.25 --output-dir /tmp/ft`。
+
+用更少的步数做对照实验（验证是否过拟合）：`pipenv run python scripts/02_run_finetuning.py --fraction 1.00 --train-steps 3000`。
 
 **Checkpoint 路径**
 
@@ -240,12 +243,12 @@ bash scripts/03_run_eval.sh [选项] [FRACTION ...]
 | ---------------------------- | ------------------------------------------- | --------------------------------------------------------------------------------- |
 | `--finetune-output-base-dir` | `<仓库根>/outputs/finetuning-action-expert`    | 与 Step 2 的 `--output-dir` 对齐；脚本会在其下查找 `fracXXX/checkpoints/last/pretrained_model` |
 | `--results-dir`              | `<仓库根>/results`                             | 每条评估的 `eval_info.json` 等输出目录                                                      |
-| `--eval-n-episodes`         | `200`                                         | 传给 `lerobot_eval` 的 `--eval.n_episodes`                                                 |
-| `--eval-batch-size`         | `4`                                           | 传给 `lerobot_eval` 的 `--eval.batch_size`                                                 |
+| `--eval-n-episodes`          | `200`                                       | 传给 `lerobot_eval` 的 `--eval.n_episodes`                                           |
+| `--eval-batch-size`          | `4`                                         | 传给 `lerobot_eval` 的 `--eval.batch_size`                                           |
 | 位置参数 `FRACTION ...`          | **未指定时**：`0.05`、`0.10`、`0.25`、`0.50`、`1.00` | 可写小数或与脚本内别名，如 `0.50`、`frac050`、`1`；**不支持**未列在脚本 `fraction_to_label` 中的比例          |
 
 
-**评估时固定传入 `lerobot_eval` 的选项**（写在 shell 内）：`--policy.type=smolvla`、`--env.type=libero`、`--env.task=libero_spatial`；**`--eval.n_episodes` / `--eval.batch_size` 默认 200 / 4**，可用 `--eval-n-episodes`、`--eval-batch-size` 覆盖。需 headless 渲染时脚本使用 `MUJOCO_GL=egl`。
+**评估时固定传入 `lerobot_eval` 的选项**（写在 shell 内）：`--policy.type=smolvla`、`--env.type=libero`、`--env.task=libero_spatial`；`**--eval.n_episodes` / `--eval.batch_size` 默认 200 / 4**，可用 `--eval-n-episodes`、`--eval-batch-size` 覆盖。需 headless 渲染时脚本使用 `MUJOCO_GL=egl`。
 
 **精简镜像 / 容器（Debian/Ubuntu）**：若出现 `libGL.so.1`、`libEGL.so.0`、`libOpenGL.so.0` 缺失或 PyOpenGL EGL 相关报错，在容器内安装 Mesa/EGL 与 GLVND 用户态库后再跑评估：
 
@@ -272,10 +275,10 @@ bash scripts/03_run_eval.sh 1.00
 bash scripts/03_run_eval.sh --finetune-output-base-dir /tmp/ft --results-dir /tmp/eval 0.25
 
 # 自定义评估回合数与 batch（例如更接近「每 task 50 × 10 task」的总 rollout 规模时，可按 LeRobot 语义自行设大 n_episodes）
-bash scripts/03_run_eval.sh --eval-n-episodes 500 --eval-batch-size 2
+bash scripts/03_run_eval.sh 0.05 --eval-n-episodes 100 --eval-batch-size 4
 ```
 
-单次评估耗时随 **`--eval-n-episodes`**、**`--eval-batch-size`** 与机器性能变化（默认 200 / 4 时以往约 **20–40 分钟** 量级，仅供参考）。输出：`results/fracXXX/eval_info.json`（以及各 run 的 `output_dir` 下日志）。
+单次评估耗时随 `**--eval-n-episodes**`、`**--eval-batch-size**` 与机器性能变化（默认 200 / 4 时以往约 **20–40 分钟** 量级，仅供参考）。输出：`results/fracXXX/eval_info.json`（以及各 run 的 `output_dir` 下日志）。
 
 ### Step 4: Analyze and visualize
 

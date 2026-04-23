@@ -28,7 +28,7 @@ from pathlib import Path
 DATASET_REPO = "lerobot/libero_spatial_image"
 PRETRAINED_PATH = "lerobot/smolvla_base"
 
-TRAIN_STEPS = 30_000
+TRAIN_STEPS = 30_000  # override with --train-steps
 BATCH_SIZE = 64
 SAVE_FREQ = 10_000   # save only final checkpoint (saves disk space)
 LOG_FREQ = 100
@@ -69,6 +69,7 @@ def build_config(
     episodes: list[int],
     output_dir: Path,
     num_workers: int,
+    train_steps: int,
 ):
     """Build TrainPipelineConfig programmatically (no sys.argv manipulation needed)."""
     from lerobot.configs.default import DatasetConfig, WandBConfig
@@ -105,7 +106,7 @@ def build_config(
         policy=policy_cfg,
         output_dir=output_dir,
         job_name=f"smolvla_libero_spatial_{label}",
-        steps=TRAIN_STEPS,
+        steps=train_steps,
         batch_size=BATCH_SIZE,
         save_freq=SAVE_FREQ,
         log_freq=LOG_FREQ,
@@ -140,6 +141,12 @@ def main():
         default=4,
         help="Number of workers to use for training",
     )
+    parser.add_argument(
+        "--train-steps",
+        type=int,
+        default=TRAIN_STEPS,
+        help=f"Number of training steps (default: {TRAIN_STEPS})",
+    )
 
     args = parser.parse_args()
 
@@ -154,11 +161,12 @@ def main():
         episodes,
         args.output_dir,
         args.num_workers,
+        args.train_steps,
     )
 
     print(f"\n{'='*60}")
     print(f"  Fraction : {args.fraction:.0%}  ({len(episodes)} episodes)")
-    print(f"  Steps    : {TRAIN_STEPS:,}")
+    print(f"  Steps    : {args.train_steps:,}")
     print(f"  Batch    : {BATCH_SIZE}")
     print(f"  Workers  : {args.num_workers}")
     print(f"  Output   : {cfg.output_dir}")

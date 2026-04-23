@@ -20,7 +20,7 @@ import numpy as np
 import pandas as pd
 
 # ── Config ────────────────────────────────────────────────────────────────────
-RESULTS_DIR = Path("project1_vla_data_efficiency/results")
+RESULTS_DIR = Path("results")
 
 # (label, approx #demos, display name)
 CONDITIONS = [
